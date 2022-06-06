@@ -1,4 +1,4 @@
-# Klipfolio GitHub Actions and Workflows
+# Klipfolio GitHub Workflows
 
 Contains reusable GHA Workflows.  
 
