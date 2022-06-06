@@ -1,0 +1,41 @@
+name: "Slack Notify"    
+description: "Slack notify to specified channels."
+
+inputs:
+  job_name:
+    required: false
+    description: If you want to overwrite the job name.
+    default: ''
+  failure_notify_channel_webhook_url: 
+    required: true
+    description: Webhook URL of the Slack channel used to only notify on workflow failures (action required).
+  always_notify_channel_webhook_url: 
+    required: true
+    description: Webhook URL to the Slack channel used to always notify on all workflow builds regardless of status.
+
+runs:
+  using: "composite"
+  steps:
+    - name: Slack Notify (failure)
+      uses: 8398a7/action-slack@a74b761b4089b5d730d813fbedcd2ec5d394f3af
+      with:
+        status: ${{ job.status }}
+        job_name: ${{ inputs.job_name }}
+        fields: repo,commit,author,ref,workflow,job,took
+      env:
+        SLACK_WEBHOOK_URL: ${{ inputs.failure_notify_channel_webhook_url }}
+        MATRIX_CONTEXT: ${{ toJson(matrix) }}
+      if: |
+        github.ref == 'refs/heads/master' &&
+        failure()
+
+    - name: Slack Notify (always)
+      uses: 8398a7/action-slack@a74b761b4089b5d730d813fbedcd2ec5d394f3af
+      with:
+        status: ${{ job.status }}
+        job_name: ${{ inputs.job_name }}
+        fields: repo,commit,author,ref,workflow,job,took
+      env:
+        SLACK_WEBHOOK_URL: ${{ inputs.always_notify_channel_webhook_url }}
+        MATRIX_CONTEXT: ${{ toJson(matrix) }}
+      if: always() # Acts as a log stream for the status of all builds

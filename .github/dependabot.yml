@@ -1,0 +1,16 @@
+version: 2
+
+updates:
+- package-ecosystem: "github-actions"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+  rebase-strategy: "disabled"
+
+# cant use "/actions/**" support. See bug: https://github.com/dependabot/dependabot-core/issues/5137
+- package-ecosystem: "github-actions"
+  directory: "/actions/slack-notify"
+  schedule:
+    interval: "weekly"
+  rebase-strategy: "disabled"
+  
