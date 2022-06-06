@@ -23,6 +23,6 @@ on:
 
 jobs:
   main:
-    uses: Klipfolio/kf-github-actions/.github/workflows/pr-lint.yml@master
+    uses: Klipfolio/kf-gha-workflows/.github/workflows/pr-lint.yml@master
 ```
 <!-- end usage -->
