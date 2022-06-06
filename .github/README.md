@@ -22,7 +22,7 @@ on:
       - synchronize
 
 jobs:
-  main:
+  validate:
     uses: Klipfolio/kf-gha-workflows/.github/workflows/pr-lint.yml@main
 ```
 <!-- end usage -->
