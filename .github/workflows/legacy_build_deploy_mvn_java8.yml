@@ -1,0 +1,153 @@
+name: Continuous Integration
+
+on:
+  workflow_call:
+    inputs: 
+      java_version:
+        description: "Supports an exact version or a version range using SemVer notation (if supported by Java distribution)"
+        required: false
+        default: 8
+        type: number
+      java_distribution:
+        description: "Java distribution."
+        required: false
+        default: 'corretto'
+        type: string
+      maven_deploy_cmd:
+        description: "Maven deploy command."
+        required: false
+        default: 'mvn -DupdateReleaseInfo=true jar:jar deploy:deploy'
+        type: string
+    secrets:
+      SLACK_WEBHOOK_NOTIFYCATCHER_URL:
+        required: true
+      SLACK_WEBHOOK_CICD_STATUS_URL:
+        required: true
+      BUILD_USER_EMAIL:
+        required: true
+      PA_GITHUB_REPO_ACCESS:
+        required: true
+      NEXUS_WRITE_USERNAME:
+        required: true
+      NEXUS_WRITE_PASSWORD:
+        required: true
+      NEXUS_REPO_URL:
+        required: true
+      COMMIT_KEY:
+        required: true
+      
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: Build and Test
+    env:
+      MAVEN_CLI_OPTS: "--batch-mode --show-version --errors"
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Checkout actions repo
+        uses: actions/checkout@v3
+        with:
+          repository: Klipfolio/kf-github-actions
+          path: kf-github-actions
+          token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
+
+      - name: Switch HEAD
+        env:
+          GIT_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo $GIT_HEAD
+          echo $GITHUB_SHA
+          [ ! -z "$GIT_HEAD" ] && git checkout $GIT_HEAD
+          echo $(git rev-parse --short=9 HEAD)
+
+      - name: Prepare Release
+        if: github.ref == 'refs/heads/master' && !contains(github.event.head_commit.message, 'release skip')
+        run: |
+          git config user.name "GitHub Actions build"
+          git config user.email ${{ secrets.BUILD_USER_EMAIL }}
+          npx standard-version
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ inputs.java_version }}
+          distribution: ${{ inputs.java_distribution }}
+          architecture: x64
+          cache: 'maven'
+
+      - name: Set groupId for branch
+        if: github.ref != 'refs/heads/master'
+        env:
+          GIT_BRANCH_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          echo "GIT_BRANCH_REF=$GIT_BRANCH_REF"
+          BRANCH_NAME=$(echo $GIT_BRANCH_REF | sed -e 's/[\/]/./g' | sed -e 's/[^-a-zA-Z0-9._]/-/g')
+          BASE_GROUP_ID="com.klipfolio"
+          BRANCH_GROUP_ID="$BASE_GROUP_ID.branch.$BRANCH_NAME"
+          sed -i "0,/${BASE_GROUP_ID}/s/${BASE_GROUP_ID}/${BRANCH_GROUP_ID}/" pom.xml
+      - name: Set version
+        run: |
+          VERSION=$(cat manifest.json | jq -r .version)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          mvn versions:set -DnewVersion=$VERSION-$(git rev-parse --short=9 HEAD)
+
+      - name: Prepare Maven settings
+        env:
+          NEXUS_USERNAME: ${{ secrets.NEXUS_WRITE_USERNAME }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_WRITE_PASSWORD }}
+          NEXUS_REPO_URL: ${{ secrets.NEXUS_REPO_URL }}
+        run: |
+          curl --silent https://kfdev-public-hh0tznlukeop.s3.ca-central-1.amazonaws.com/mvn_config_template.sh \
+          --output ./maven_config_template.sh && \
+          chmod u+x ./maven_config_template.sh && \
+          ./maven_config_template.sh > ~/.m2/settings.xml
+
+      - name: Compile
+        run: mvn clean compile
+      
+      - name: Build and Test project
+        run: mvn jacoco:prepare-agent resources:testResources compiler:testCompile surefire:test jacoco:report
+
+      - name: Create Unit Test Report
+        if: steps.unit-tests.outcome == 'failure'
+        run: |
+          mvn surefire-report:report-only
+      - name: Upload unit test report
+        if: steps.unit-tests.outcome == 'failure'
+        uses: actions/upload-artifact@v3
+        with:
+          name: unit-test-report.html
+          path: target/site/surefire-report.html
+      - name: Deploy
+        run: |
+          sudo chown -R $USER:$USER "$HOME/.m2/repository"
+          ${{ inputs.maven_deploy_cmd }}
+
+      - name: Release
+        if: github.ref == 'refs/heads/master' && !contains(github.event.head_commit.message, 'release skip')
+        env:
+          COMMIT_KEY: ${{ secrets.COMMIT_KEY }}
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          # Remove default token (read-only)
+          git config --unset http.https://github.com/.extraheader
+          # Setup ssh access
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add - <<< "${COMMIT_KEY}"
+          git config --add url.git@github.com:.insteadof https://github.com/
+          # Push release commit
+          git push --follow-tags origin master
+
+      - name: Slack Notify
+        uses: ./kf-github-actions/.github/actions/slack-notify
+        with: 
+          job_name: Build and Test
+          always_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_NOTIFYCATCHER_URL }}
+          failure_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_CICD_STATUS_URL }}
