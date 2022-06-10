@@ -1,0 +1,85 @@
+name: Build Docker Image
+
+on:
+  workflow_call:  
+    secrets:
+      SLACK_WEBHOOK_NOTIFYCATCHER_URL:
+        required: true
+      SLACK_WEBHOOK_CICD_STATUS_URL:
+        required: true
+      PA_GITHUB_REPO_ACCESS:
+        required: true
+      PA_GITHUB_CONTAINER_REGISTRY:
+        required: true 
+      NEXUS_READ_USERNAME:
+        required: true
+      NEXUS_READ_PASSWORD:
+        required: true
+
+jobs:
+  build_docker:
+    if: github.ref == 'refs/heads/master'
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    name: Build Docker Image
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Checkout actions repo
+        uses: actions/checkout@v3
+        with:
+          repository: Klipfolio/kf-github-actions
+          path: kf-github-actions
+          token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
+
+      - name: Prepare ghcr.io tags
+        id: prep_tags
+        run: |
+          REGISTRY=ghcr.io
+          REPOSITORY=$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          DOCKER_IMAGE="${REGISTRY}/${REPOSITORY}"
+          VERSION=$(npx -q xml-js pom.xml --compact | jq -r .project.version._text | sed "s/-SNAPSHOT//")
+          VERSION_WITH_SHA=$VERSION-$(git rev-parse --short=9 HEAD)
+          echo Current version $VERSION_WITH_SHA
+          # Get version from POM
+          GITHUB_REGISTRY_TAGS="${DOCKER_IMAGE}:${VERSION_WITH_SHA}"
+          GITHUB_REGISTRY_TAGS="$GITHUB_REGISTRY_TAGS,${DOCKER_IMAGE}:${VERSION}"
+          GITHUB_REGISTRY_TAGS="$GITHUB_REGISTRY_TAGS,${DOCKER_IMAGE}:latest"
+          echo ::set-output name=github_registry_tags::${GITHUB_REGISTRY_TAGS}
+      - name: Set up Docker QEMU
+        id: qemu
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Cache Docker layers
+        id: docker-cache
+        uses: actions/cache@v2
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+      - name: Login to GitHub Packages Docker Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.PA_GITHUB_CONTAINER_REGISTRY }}
+      - name: Build and Push
+        uses: docker/build-push-action@v3
+        with:
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.prep_tags.outputs.github_registry_tags }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
+          build-args: |
+            "NEXUS_USERNAME=${{ secrets.NEXUS_READ_USERNAME }}"
+            "NEXUS_PASSWORD=${{ secrets.NEXUS_READ_PASSWORD }}"
+
+      - name: Slack Notify
+        uses: ./kf-github-actions/.github/actions/slack-notify
+        with: 
+          job_name: Build Docker Image
+          always_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_NOTIFYCATCHER_URL }}
+          failure_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_CICD_STATUS_URL }}
