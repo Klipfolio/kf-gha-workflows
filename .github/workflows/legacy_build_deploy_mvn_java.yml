@@ -34,7 +34,7 @@ on:
       NEXUS_REPO_URL:
         required: true
       COMMIT_KEY:
-        required: true
+        required: false
       
 jobs:
   build:
