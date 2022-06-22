@@ -13,6 +13,11 @@ on:
         required: false
         default: 'corretto'
         type: string
+      skip_tests:
+        description: "Used to temporarily skip the test stage"
+        required: false
+        type: boolean
+        default: false
       maven_deploy_cmd:
         description: "Maven deploy command."
         required: false
@@ -110,7 +115,8 @@ jobs:
       - name: Compile
         run: mvn clean compile
       
-      - name: Build and Test project
+      - name: Test
+        if: ${{ ! inputs.skip_tests }}
         id: unit-tests
         run: mvn jacoco:prepare-agent resources:testResources compiler:testCompile surefire:test jacoco:report
 
@@ -118,12 +124,14 @@ jobs:
         if: steps.unit-tests.outcome == 'failure'
         run: |
           mvn surefire-report:report-only
+
       - name: Upload unit test report
         if: steps.unit-tests.outcome == 'failure'
         uses: actions/upload-artifact@v3
         with:
           name: unit-test-report.html
           path: target/site/surefire-report.html
+
       - name: Deploy
         run: |
           sudo chown -R $USER:$USER "$HOME/.m2/repository"
