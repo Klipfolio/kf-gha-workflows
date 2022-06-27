@@ -159,6 +159,5 @@ jobs:
         uses: ./kf-github-actions/.github/actions/slack-notify
         with: 
           job_name: Build and Test
-          git_ref: ${{ github.ref }}
           always_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_NOTIFYCATCHER_URL }}
           failure_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_CICD_STATUS_URL }}
