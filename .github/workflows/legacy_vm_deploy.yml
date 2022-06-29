@@ -3,11 +3,6 @@ name: Continuous Integration
 on:
   workflow_call:
     inputs: 
-      timeout-minutes:
-        description: "Override our default job timeout (in minutes). Can't do this yet due to bug: https://github.com/actions/runner/issues/1555"
-        required: false
-        default: 10
-        type: number
       java_version:
         description: "Supports an exact version or a version range using SemVer notation (if supported by Java distribution)"
         required: false
