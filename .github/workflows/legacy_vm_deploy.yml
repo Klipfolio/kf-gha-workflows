@@ -1,0 +1,114 @@
+name: Continuous Integration
+
+on:
+  workflow_call:
+    inputs: 
+      timeout-minutes:
+        description: "Override our default job timeout (in minutes). Can't do this yet due to bug: https://github.com/actions/runner/issues/1555"
+        required: false
+        default: 10
+        type: number
+      java_version:
+        description: "Supports an exact version or a version range using SemVer notation (if supported by Java distribution)"
+        required: false
+        default: 8
+        type: number
+      java_distribution:
+        description: "Java distribution."
+        required: false
+        default: 'corretto'
+        type: string
+      maven_deploy_cmd:
+        description: "Maven deploy command."
+        required: false
+        default: 'mvn -B -U -DupdateReleaseInfo=true clean deploy'
+        type: string
+    secrets:
+      SLACK_WEBHOOK_NOTIFYCATCHER_URL:
+        required: true
+      SLACK_WEBHOOK_CICD_STATUS_URL:
+        required: true
+      PA_GITHUB_REPO_ACCESS:
+        required: true
+      NEXUS_WRITE_USERNAME:
+        required: true
+      NEXUS_WRITE_PASSWORD:
+        required: true
+      NEXUS_REPO_URL:
+        required: true
+      AWS_VM_DEPLOY_ACCESS_KEY_ID:
+        required: true
+      AWS_VM_DEPLOY_ACCESS_KEY:
+       required: true       
+      
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: Build and Deploy
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Checkout actions repo
+        uses: actions/checkout@v3
+        with:
+          repository: Klipfolio/kf-github-actions
+          path: kf-github-actions
+          token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ inputs.java_version }}
+          distribution: ${{ inputs.java_distribution }}
+          architecture: x64
+          cache: 'maven'
+
+      - name: Set groupId for branch
+        if: github.ref != 'refs/heads/master'
+        run: |
+          BRANCH_NAME=$(echo $GITHUB_REF_NAME | sed -e 's/[\/]/./g' | sed -e 's/[^-a-zA-Z0-9._]/-/g')
+          BASE_GROUP_ID="com.klipfolio"
+          BRANCH_GROUP_ID="$BASE_GROUP_ID.branch.$BRANCH_NAME"
+          echo "BRANCH_NAME=${BRANCH_NAME}"
+          echo "BASE_GROUP_ID=${BASE_GROUP_ID}"
+          echo "BRANCH_GROUP_ID=${BRANCH_GROUP_ID}"
+
+          sed -i "0,/${BASE_GROUP_ID}/s/${BASE_GROUP_ID}/${BRANCH_GROUP_ID}/" pom.xml
+
+      - name: Set version
+        run: |
+          # Major and minor version are irrelevant with these VM builds  
+          VERSION=6.0.$GITHUB_RUN_NUMBER-$(git rev-parse --short=9 HEAD)
+          mvn versions:set -DnewVersion=$VERSION
+
+      - name: Prepare Maven settings
+        env:
+          NEXUS_USERNAME: ${{ secrets.NEXUS_WRITE_USERNAME }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_WRITE_PASSWORD }}
+          NEXUS_REPO_URL: ${{ secrets.NEXUS_REPO_URL }}
+        run: |
+          curl --silent https://kfdev-public-hh0tznlukeop.s3.ca-central-1.amazonaws.com/mvn_config_template.sh \
+          --output ./maven_config_template.sh && \
+          chmod u+x ./maven_config_template.sh && \
+          ./maven_config_template.sh > ~/.m2/settings.xml
+
+      - name: Configure AWS credentials
+        # Pre built AWS action to configure CLI (the AWS CLI is pre-installed)
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_VM_DEPLOY_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_VM_DEPLOY_ACCESS_KEY }} 
+          aws-region: ca-central-1
+
+      - name: Deploy
+        run: ${{ inputs.maven_deploy_cmd }}
+
+      - name: Slack Notify
+        if: always()
+        uses: ./kf-github-actions/.github/actions/slack-notify
+        with: 
+          job_name: Build and Deploy
+          always_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_NOTIFYCATCHER_URL }}
+          failure_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_CICD_STATUS_URL }}
