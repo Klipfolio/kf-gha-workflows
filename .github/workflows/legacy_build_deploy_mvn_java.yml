@@ -77,7 +77,7 @@ jobs:
           git config user.email ${{ secrets.BUILD_USER_EMAIL }}
           npx standard-version
 
-      - name: Set up JDK 8
+      - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           java-version: ${{ inputs.java_version }}

@@ -52,7 +52,7 @@ jobs:
           path: kf-github-actions
           token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
 
-      - name: Set up JDK 8
+      - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           java-version: ${{ inputs.java_version }}
