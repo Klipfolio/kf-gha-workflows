@@ -1,0 +1,69 @@
+name: Deleted Branch Component Version
+on:
+  workflow_call:
+    inputs:
+      component:
+        description: 'The component name to delete associated with the given branch'
+        required: true
+        type: string
+      branch:
+        description: 'The Branch name of the component to delete'
+        required: true
+        type: string
+    secrets:
+      BUILD_ARTIFACTS_DYNAMODB_AWS_ACCESS_KEY_ID:
+        required: true
+      BUILD_ARTIFACTS_DYNAMODB_AWS_ACCESS_KEY:
+       required: true
+      PA_GITHUB_REPO_ACCESS:
+        required: true
+
+jobs:
+  delete_version:
+    if: github.ref == 'refs/heads/master'
+    timeout-minutes: 3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup variables
+        id: setup_variables
+        env:
+          BRANCH: ${{ inputs.branch }}
+          COMPONENT: ${{ inputs.component }}
+        run: |
+          BRANCH=$(sed 's/-/_/g' <<< "$BRANCH")
+          BRANCH=$(sed 's/\//_/g' <<< "$BRANCH")
+          BRANCH=$(sed 's/\./_/g' <<< "$BRANCH")
+
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+          echo "COMPONENT=$COMPONENT" >> $GITHUB_ENV
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.BUILD_ARTIFACTS_DYNAMODB_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.BUILD_ARTIFACTS_DYNAMODB_AWS_ACCESS_KEY }}
+          aws-region: ca-central-1
+          
+      - name: Update DynamoDB
+        run: |
+          aws dynamodb delete-item \
+              --table-name branch-artifacts \
+              --key '{"component":{"S":"${{ env.COMPONENT }}"},"branch":{"S":"${{ env.BRANCH }}"}}'
+
+      - name: Checkout actions repo
+        if: always()
+        uses: actions/checkout@v3
+        with:
+          repository: Klipfolio/kf-github-actions
+          path: kf-github-actions
+          token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
+
+      - name: Slack Notify
+        if: always()
+        uses: ./kf-github-actions/.github/actions/slack-notify
+        with:
+          job_name: delete_version
+          always_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_NOTIFYCATCHER_URL }}
+          failure_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_CICD_STATUS_URL }}

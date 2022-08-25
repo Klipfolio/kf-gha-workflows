@@ -1,0 +1,82 @@
+name: Update Branch Component Version
+on:
+  workflow_call:
+    inputs:
+      component:
+        description: 'The component name to update'
+        required: true
+        type: string  
+      branch:
+        description: 'The Branch name for the component'
+        required: true
+        type: string
+      version:
+        description: 'The version number of the component to update'
+        required: true
+        type: string
+    secrets:
+      BUILD_ARTIFACTS_DYNAMODB_AWS_ACCESS_KEY_ID:
+        required: true
+      BUILD_ARTIFACTS_DYNAMODB_AWS_ACCESS_KEY:
+       required: true
+      PA_GITHUB_REPO_ACCESS:
+        required: true
+
+jobs:
+  update_version:
+    timeout-minutes: 3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup variables
+        env:
+          BRANCH: ${{ inputs.branch }}
+          COMPONENT: ${{ inputs.component }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          BRANCH=$(sed 's/-/_/g' <<< "$BRANCH")
+          BRANCH=$(sed 's/\//_/g' <<< "$BRANCH")
+          BRANCH=$(sed 's/\./_/g' <<< "$BRANCH")
+          COMPONENT=$(sed 's/-/_/g' <<< "$COMPONENT")
+          
+          # Longer ttl for master
+          if [[ $BRANCH == "master" ]]; then
+            EXPIRE=$(date -d '+365 days' +%s)
+          else
+            EXPIRE=$(date -d '+60 days' +%s)
+          fi
+
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+          echo "COMPONENT=$COMPONENT" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "EXPIRE=$EXPIRE" >> $GITHUB_ENV
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.BUILD_ARTIFACTS_DYNAMODB_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.BUILD_ARTIFACTS_DYNAMODB_AWS_ACCESS_KEY }}
+          aws-region: ca-central-1
+          
+      - name: Update DynamoDB
+        run: |
+          aws dynamodb put-item \
+              --table-name branch-artifacts \
+              --item '{"branch":{"S": "${{ env.BRANCH }}"},"component": {"S": "${{ env.COMPONENT }}"},"version":{"S": "${{ env.VERSION }}"}, "ttl":{"N": "${{ env.EXPIRE }}"}}'
+
+      - name: Checkout actions repo
+        if: always()
+        uses: actions/checkout@v3
+        with:
+          repository: Klipfolio/kf-github-actions
+          path: kf-github-actions
+          token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
+
+      - name: Slack Notify
+        if: always()
+        uses: ./kf-github-actions/.github/actions/slack-notify
+        with:
+          job_name: update_version
+          always_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_NOTIFYCATCHER_URL }}
+          failure_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_CICD_STATUS_URL }}
