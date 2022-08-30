@@ -29,22 +29,15 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Setup variables
-        env:
-          BRANCH: ${{ inputs.branch }}
+      - name: Setup ttl
         run: | 
-          BRANCH=$(sed 's/-/_/g' <<< "$BRANCH")
-          BRANCH=$(sed 's/\//_/g' <<< "$BRANCH")
-          BRANCH=$(sed 's/\./_/g' <<< "$BRANCH")    
-
           # Longer ttl for master
-          if [[ $BRANCH == "master" ]]; then
+          if [[ ${{ inputs.branch }} == "master" ]]; then
             EXPIRE=$(date -d '+365 days' +%s)
           else
             EXPIRE=$(date -d '+60 days' +%s)
           fi
 
-          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
           echo "EXPIRE=$EXPIRE" >> $GITHUB_ENV
 
       - name: Configure AWS Credentials
@@ -58,7 +51,7 @@ jobs:
         run: |
           aws dynamodb put-item \
               --table-name branch-artifacts \
-              --item '{"branch":{"S": "${{ env.BRANCH }}"},"component": {"S": "${{ inputs.component }}"},"version":{"S": "${{ inputs.version }}"}, "ttl":{"N": "${{ env.EXPIRE }}"}}'
+              --item '{"branch":{"S": "${{ inputs.branch }}"},"component": {"S": "${{ inputs.component }}"},"version":{"S": "${{ inputs.version }}"}, "ttl":{"N": "${{ env.EXPIRE }}"}}'
 
       - name: Checkout actions repo
         if: always()

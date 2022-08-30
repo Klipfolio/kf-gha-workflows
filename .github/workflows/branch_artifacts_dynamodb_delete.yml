@@ -26,17 +26,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Setup variables
-        id: setup_variables
-        env:
-          BRANCH: ${{ inputs.branch }}
-        run: |
-          BRANCH=$(sed 's/-/_/g' <<< "$BRANCH")
-          BRANCH=$(sed 's/\//_/g' <<< "$BRANCH")
-          BRANCH=$(sed 's/\./_/g' <<< "$BRANCH")
-
-          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
-
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -48,7 +37,7 @@ jobs:
         run: |
           aws dynamodb delete-item \
               --table-name branch-artifacts \
-              --key '{"component":{"S":"${{ inputs.component }}"},"branch":{"S":"${{ env.BRANCH }}"}}'
+              --key '{"component":{"S":"${{ inputs.component }}"},"branch":{"S":"${{ inputs.branch }}"}}'
 
       - name: Checkout actions repo
         if: always()
