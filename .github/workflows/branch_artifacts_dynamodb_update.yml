@@ -32,9 +32,11 @@ jobs:
       - name: Setup variables
         env:
           BRANCH: ${{ inputs.branch }}
-          COMPONENT: ${{ inputs.component }}
-          VERSION: ${{ inputs.version }}
-        run: |          
+        run: | 
+          BRANCH=$(sed 's/-/_/g' <<< "$BRANCH")
+          BRANCH=$(sed 's/\//_/g' <<< "$BRANCH")
+          BRANCH=$(sed 's/\./_/g' <<< "$BRANCH")    
+
           # Longer ttl for master
           if [[ $BRANCH == "master" ]]; then
             EXPIRE=$(date -d '+365 days' +%s)
@@ -43,8 +45,6 @@ jobs:
           fi
 
           echo "BRANCH=$BRANCH" >> $GITHUB_ENV
-          echo "COMPONENT=$COMPONENT" >> $GITHUB_ENV
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "EXPIRE=$EXPIRE" >> $GITHUB_ENV
 
       - name: Configure AWS Credentials
@@ -58,7 +58,7 @@ jobs:
         run: |
           aws dynamodb put-item \
               --table-name branch-artifacts \
-              --item '{"branch":{"S": "${{ env.BRANCH }}"},"component": {"S": "${{ env.COMPONENT }}"},"version":{"S": "${{ env.VERSION }}"}, "ttl":{"N": "${{ env.EXPIRE }}"}}'
+              --item '{"branch":{"S": "${{ env.BRANCH }}"},"component": {"S": "${{ inputs.component }}"},"version":{"S": "${{ inputs.version }}"}, "ttl":{"N": "${{ env.EXPIRE }}"}}'
 
       - name: Checkout actions repo
         if: always()
