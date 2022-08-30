@@ -34,12 +34,7 @@ jobs:
           BRANCH: ${{ inputs.branch }}
           COMPONENT: ${{ inputs.component }}
           VERSION: ${{ inputs.version }}
-        run: |
-          BRANCH=$(sed 's/-/_/g' <<< "$BRANCH")
-          BRANCH=$(sed 's/\//_/g' <<< "$BRANCH")
-          BRANCH=$(sed 's/\./_/g' <<< "$BRANCH")
-          COMPONENT=$(sed 's/-/_/g' <<< "$COMPONENT")
-          
+        run: |          
           # Longer ttl for master
           if [[ $BRANCH == "master" ]]; then
             EXPIRE=$(date -d '+365 days' +%s)

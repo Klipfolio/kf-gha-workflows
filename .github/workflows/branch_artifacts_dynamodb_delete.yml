@@ -32,10 +32,6 @@ jobs:
           BRANCH: ${{ inputs.branch }}
           COMPONENT: ${{ inputs.component }}
         run: |
-          BRANCH=$(sed 's/-/_/g' <<< "$BRANCH")
-          BRANCH=$(sed 's/\//_/g' <<< "$BRANCH")
-          BRANCH=$(sed 's/\./_/g' <<< "$BRANCH")
-
           echo "BRANCH=$BRANCH" >> $GITHUB_ENV
           echo "COMPONENT=$COMPONENT" >> $GITHUB_ENV
 
