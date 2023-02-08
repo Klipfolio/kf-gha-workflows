@@ -163,3 +163,28 @@ jobs:
     secrets: inherit
 ```
 <!-- end usage -->
+
+### PR Restricted Files
+[pr-restricted-files](https://github.com/Klipfolio/kf-gha-workflows/blob/main/.github/workflows/pr-restricted-files.yml) helps ensure your branch doesn't contain files that shouldn't be updated from a PR. A simple admin merge is required to override this check.
+
+#### Usage
+Create the following GHA workflow in your repository `.github/workflows/pr-restricted-files.yml` and add it as a required check on your main branch:
+<!-- start usage -->
+```yml
+name: "PR Restricted Files"
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+
+jobs:
+  check:
+    uses: Klipfolio/kf-gha-workflows/.github/workflows/pr-restricted-files.yml@main
+    with:
+      file_paths_to_check: "package.json package-lock.json"
+
+```
+<!-- end usage -->
