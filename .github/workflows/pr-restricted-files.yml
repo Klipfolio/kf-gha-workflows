@@ -1,0 +1,43 @@
+name: "PR Restricted Files"
+
+on:
+  workflow_call:
+    inputs: 
+      file_paths_to_check: 
+        description: 'List of relative file paths to check for (i.e. "package.json package-lock.json src/somedir/somefile.js"). Does not support paths or names containing spaces.'
+        required: true
+        type: string 
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+
+      - name: Check for changes
+        run: |
+          default_branch=$(git remote show origin | awk '/HEAD branch/ {print $NF}')
+          echo "[INFO] Default branch detected: $default_branch"
+
+          echo "[INFO] Gathering list of files changed in this branch:"
+          changed_files=$(git diff --name-only origin/${default_branch})
+          echo "$changed_files" 
+
+          for filePath in ${{ inputs.file_paths_to_check }}; do
+            if [[ "$changed_files" == *"$filePath"* ]]; then
+              echo "*******************************************************"
+              echo "ERROR: Detected changes to restricted file: \"$filePath\""
+              echo ""
+              echo "This Pull Request cannot be merged since the branch contains changes to a restricted file."
+              echo "If the file change is required then a repository administrator will need to perform the merge."
+              echo "*******************************************************"
+
+              exit 1
+            fi
+          done
+
+          echo "[INFO] No restricted file changes detected."
