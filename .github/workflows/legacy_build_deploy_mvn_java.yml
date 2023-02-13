@@ -95,11 +95,17 @@ jobs:
           BASE_GROUP_ID="com.klipfolio"
           BRANCH_GROUP_ID="$BASE_GROUP_ID.branch.$BRANCH_NAME"
           sed -i "0,/${BASE_GROUP_ID}/s/${BASE_GROUP_ID}/${BRANCH_GROUP_ID}/" pom.xml
+
       - name: Set version
         run: |
           VERSION=$(cat manifest.json | jq -r .version)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          mvn versions:set -DnewVersion=$VERSION-$(git rev-parse --short=9 HEAD)
+
+      - name: Set version for branch
+        if: github.ref != 'refs/heads/master'
+        run: |
+          VERSION=$VERSION-$(git rev-parse --short=9 HEAD)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Prepare Maven settings
         env:
@@ -111,6 +117,8 @@ jobs:
           --output ./maven_config_template.sh && \
           chmod u+x ./maven_config_template.sh && \
           ./maven_config_template.sh > ~/.m2/settings.xml
+
+          mvn versions:set -DnewVersion=$VERSION
 
       - name: Compile
         run: mvn clean compile
