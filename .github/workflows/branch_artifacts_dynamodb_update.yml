@@ -41,7 +41,7 @@ jobs:
           echo "EXPIRE=$EXPIRE" >> $GITHUB_ENV
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.BUILD_ARTIFACTS_DYNAMODB_AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.BUILD_ARTIFACTS_DYNAMODB_AWS_ACCESS_KEY }}

@@ -91,7 +91,7 @@ jobs:
 
       - name: Configure AWS credentials
         # Pre built AWS action to configure CLI (the AWS CLI is pre-installed)
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_VM_DEPLOY_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_VM_DEPLOY_ACCESS_KEY }} 
