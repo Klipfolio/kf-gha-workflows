@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 3
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup ttl
         run: | 
@@ -55,7 +55,7 @@ jobs:
 
       - name: Checkout actions repo
         if: always()
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: Klipfolio/kf-github-actions
           path: kf-github-actions
