@@ -66,7 +66,7 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.PA_GITHUB_CONTAINER_REGISTRY }}
       - name: Build and Push
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           push: true
           platforms: linux/amd64,linux/arm64
