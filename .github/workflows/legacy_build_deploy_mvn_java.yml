@@ -2,7 +2,7 @@ name: Continuous Integration
 
 on:
   workflow_call:
-    inputs: 
+    inputs:
       java_version:
         description: "Supports an exact version or a version range using SemVer notation (if supported by Java distribution)"
         required: false
@@ -75,7 +75,7 @@ jobs:
         run: |
           git config user.name "GitHub Actions build"
           git config user.email ${{ secrets.BUILD_USER_EMAIL }}
-          npx standard-version
+          npx standard-version --tag-prefix=''
 
       - name: Set up JDK
         uses: actions/setup-java@v3
@@ -139,7 +139,7 @@ jobs:
         with:
           name: unit-test-report.html
           path: target/site/surefire-report.html
-
+          
       - name: Deploy
         run: |
           sudo chown -R $USER:$USER "$HOME/.m2/repository"
