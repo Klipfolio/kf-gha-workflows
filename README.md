@@ -188,3 +188,26 @@ jobs:
 
 ```
 <!-- end usage -->
+
+### PR Restricted Files
+[ghcr_default_cleanup_schedule](https://github.com/Klipfolio/kf-gha-workflows/blob/main/.github/workflows/ghcr_default_cleanup_schedule.yml) used to cleanup packages associated to the repository calling this workflow
+
+#### Usage
+Create the following GHA workflow in your repository `.github/workflows/cleanup_ghcr.yml` which will use the default parameters that will cleanup all containers:
+<!-- start usage -->
+```yml
+name: Delete old container images
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  artifact_update:
+    uses: Klipfolio/kf-gha-workflows/.github/workflows/ghcr_default_cleanup_schedule.yml@main
+    secrets: inherit
+
+```
+<!-- end usage -->
+
