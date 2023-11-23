@@ -189,7 +189,7 @@ jobs:
 ```
 <!-- end usage -->
 
-### PR Restricted Files
+### GHCR Package Cleanup
 [ghcr_default_cleanup_schedule](https://github.com/Klipfolio/kf-gha-workflows/blob/main/.github/workflows/ghcr_default_cleanup_schedule.yml) used to cleanup packages associated to the repository calling this workflow
 
 #### Usage
