@@ -1,0 +1,53 @@
+name: Delete old packages
+
+on:
+  workflow_call:
+    inputs: 
+      min_versions_to_keep:
+        description: "The number of old versions to delete starting from the oldest version"
+        required: false
+        default: 5
+        type: number
+      ignore_versions:
+        description: "The package versions to exclude from deletion. Takes regex for the version name as input."
+        required: false
+        type: string
+      package_type:
+        description: "Type of the package. Can be one of container, maven, npm, nuget, or rubygems."
+        type: string
+        required: false
+        default: "container"
+    secrets:
+      PA_GITHUB_REPO_ACCESS:
+        required: true
+      SLACK_WEBHOOK_CICD_STATUS_URL:
+        required: true
+jobs:
+  clean-ghcr:
+    runs-on: ubuntu-latest
+    name: Delete old images
+    timeout-minutes: 5
+
+    steps:
+      - name: Delete images
+        uses: actions/delete-package-versions@v4
+        with:
+          package-name: ${{ github.event.repository.name }}
+          package-type: ${{ inputs.package_type }}
+          min-versions-to-keep: ${{ inputs.min_versions_to_keep }}
+          ignore-versions: ${{ inputs.ignore_versions }}
+
+      - name: Checkout actions repo
+        if: failure()
+        uses: actions/checkout@v4
+        with:
+          repository: Klipfolio/kf-github-actions
+          path: kf-github-actions
+          token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
+
+      - name: Slack Notify
+        if: failure()
+        uses: ./kf-github-actions/.github/actions/slack-notify
+        with: 
+          job_name: Delete old images
+          always_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_CICD_STATUS_URL }}
