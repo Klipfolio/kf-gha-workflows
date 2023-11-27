@@ -11,12 +11,13 @@ on:
       ignore_versions:
         description: "The package versions to exclude from deletion. Takes regex for the version name as input."
         required: false
+        default: '^$'
         type: string
       package_type:
         description: "Type of the package. Can be one of container, maven, npm, nuget, or rubygems."
         type: string
         required: false
-        default: "container"
+        default: 'container'
     secrets:
       PA_GITHUB_REPO_ACCESS:
         required: true
