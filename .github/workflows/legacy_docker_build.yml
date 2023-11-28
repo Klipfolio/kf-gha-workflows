@@ -1,86 +1,148 @@
 name: Build Docker Image
 
 on:
-  workflow_call:  
-    secrets:
-      SLACK_WEBHOOK_NOTIFYCATCHER_URL:
-        required: true
-      SLACK_WEBHOOK_CICD_STATUS_URL:
-        required: true
-      PA_GITHUB_REPO_ACCESS:
-        required: true
-      PA_GITHUB_CONTAINER_REGISTRY:
-        required: true 
-      NEXUS_READ_USERNAME:
-        required: true
-      NEXUS_READ_PASSWORD:
-        required: true
+  workflow_call:
+    inputs:
+      github_environment:
+        description: "Used to temporarily skip the test stage"
+        required: false
+        type: string
+        default: 'dev-ci'
 
 jobs:
   build_docker:
-    if: github.ref == 'refs/heads/master'
+    if: ${{ !contains(github.event.head_commit.message, 'release skip') || !contains(github.event.head_commit.message, 'skip release') }}
+    environment: ${{ inputs.github_environment }}
     timeout-minutes: 20
     runs-on: ubuntu-latest
     name: Build Docker Image
+    outputs:
+      branch: ${{ steps.job_outputs.outputs.branch }}
+      version: ${{ steps.job_outputs.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Switch HEAD
+        env:
+          GIT_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "GIT_HEAD=$GIT_HEAD"
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          [ ! -z "$GIT_HEAD" ] && git checkout $GIT_HEAD
+          echo $(git rev-parse --short=9 HEAD)
+
+      - name: Set version
+        run: |
+          if [[ $GITHUB_REF == "refs/heads/master" ]]; then
+            npx commit-and-tag-version
+          fi
+
+          VERSION=$(cat manifest.json | jq -r .version)
+          VERSION_WITH_SHA=$VERSION-$(git rev-parse --short=9 HEAD)
+          if [[ $GITHUB_REF != "refs/heads/master" ]]; then
+            VERSION=$VERSION_WITH_SHA
+          fi
+
+          mvn versions:set -DnewVersion=$VERSION
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION_WITH_SHA=$VERSION_WITH_SHA" >> $GITHUB_ENV
+
+      - name: Prepare Tags
+        env:
+          ECR_REGISTRY: ${{ vars.ECR_REGISTRY_DEV }}
+        id: prep_tags
+        run: |
+          ECR_REGISTRY_TAG_PREFIX="${ECR_REGISTRY}/${{ github.event.repository.name }}:"
+          # Always push VERSION to ECR (could have SHA if dev build)
+          DOCKER_TAGS="${ECR_REGISTRY_TAG_PREFIX}${VERSION}"
+
+          if [[ $GITHUB_REF == "refs/heads/master" ]]; then
+            GITHUB_REGISTRY_TAG_PREFIX="ghcr.io/klipfolio/${{ github.event.repository.name }}:"
+            DOCKER_TAGS="$DOCKER_TAGS,${GITHUB_REGISTRY_TAG_PREFIX}${VERSION_WITH_SHA}"
+            DOCKER_TAGS="$DOCKER_TAGS,${GITHUB_REGISTRY_TAG_PREFIX}${VERSION}"
+            DOCKER_TAGS="$DOCKER_TAGS,${GITHUB_REGISTRY_TAG_PREFIX}latest"
+
+            DOCKER_TAGS="$DOCKER_TAGS,${ECR_REGISTRY_TAG_PREFIX}${VERSION_WITH_SHA}"
+            DOCKER_TAGS="$DOCKER_TAGS,${ECR_REGISTRY_TAG_PREFIX}master-${VERSION}"
+          fi
+          echo "docker_tags=${DOCKER_TAGS}"
+          echo "docker_tags=${DOCKER_TAGS}" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker QEMU
+        id: qemu
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker Login (GHCR)
+        if: ${{ github.ref == 'refs/heads/master' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.PA_GITHUB_CONTAINER_REGISTRY }}
+          
+      - name: Docker Login (ECR)
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.ECR_REGISTRY_DEV }}
+          username: ${{ secrets.ECR_USER_KEY }}
+          password: ${{ secrets.ECR_USER_SECRET }}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.prep_tags.outputs.docker_tags }}
+          build-args: |
+            "NEXUS_USERNAME=${{ secrets.NEXUS_READ_USERNAME }}"
+            "NEXUS_PASSWORD=${{ secrets.NEXUS_READ_PASSWORD }}"
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: Prepare job outputs
+        id: job_outputs
+        run: |
+          export OUTPUT_VERSION=$VERSION
+
+          if [[ $GITHUB_REF == "refs/heads/master" ]]; then
+            export BRANCH_REF="${{ github.ref }}"
+          else
+            export BRANCH_REF="${{ github.head_ref }}"
+          fi
+
+          export BRANCH_REF=$(echo $BRANCH_REF | sed -e "s#refs/heads/##g")
+
+          echo "BRANCH_REF=$BRANCH_REF" >> $GITHUB_ENV
+          echo "branch=${BRANCH_REF}" >> $GITHUB_OUTPUT
+          echo "version=${OUTPUT_VERSION}" >> $GITHUB_OUTPUT
 
       - name: Checkout actions repo
+        if: ${{ failure() && github.ref == 'refs/heads/master' }}
         uses: actions/checkout@v4
         with:
           repository: Klipfolio/kf-github-actions
           path: kf-github-actions
           token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
 
-      - name: Prepare ghcr.io tags
-        id: prep_tags
-        run: |
-          REGISTRY=ghcr.io
-          REPOSITORY=$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
-          DOCKER_IMAGE="${REGISTRY}/${REPOSITORY}"
-          VERSION=$(npx -q xml-js pom.xml --compact | jq -r .project.version._text | sed "s/-SNAPSHOT//")
-          VERSION_WITH_SHA=$VERSION-$(git rev-parse --short=9 HEAD)
-          echo Current version $VERSION_WITH_SHA
-          # Get version from POM
-          GITHUB_REGISTRY_TAGS="${DOCKER_IMAGE}:${VERSION_WITH_SHA}"
-          GITHUB_REGISTRY_TAGS="$GITHUB_REGISTRY_TAGS,${DOCKER_IMAGE}:${VERSION}"
-          GITHUB_REGISTRY_TAGS="$GITHUB_REGISTRY_TAGS,${DOCKER_IMAGE}:latest"
-          echo ::set-output name=github_registry_tags::${GITHUB_REGISTRY_TAGS}
-      - name: Set up Docker QEMU
-        id: qemu
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Cache Docker layers
-        id: docker-cache
-        uses: actions/cache@v3
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
-      - name: Login to GitHub Packages Docker Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.PA_GITHUB_CONTAINER_REGISTRY }}
-      - name: Build and Push
-        uses: docker/build-push-action@v5
-        with:
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.prep_tags.outputs.github_registry_tags }}
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache
-          build-args: |
-            "NEXUS_USERNAME=${{ secrets.NEXUS_READ_USERNAME }}"
-            "NEXUS_PASSWORD=${{ secrets.NEXUS_READ_PASSWORD }}"
-
       - name: Slack Notify
+        if: ${{ failure() && github.ref == 'refs/heads/master' }}
         uses: ./kf-github-actions/.github/actions/slack-notify
-        with: 
+        with:
           job_name: Build Docker Image
-          git_ref: ${{ github.ref }}
-          always_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_NOTIFYCATCHER_URL }}
-          failure_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_CICD_STATUS_URL }}
+          always_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_CICD_STATUS_URL }}
+
+  artifact_update:
+    uses: Klipfolio/kf-gha-workflows/.github/workflows/branch_artifacts_dynamodb_update.yml@main
+    needs: build_docker
+    with:
+      branch: ${{ needs.build_docker.outputs.branch }}
+      component: ${{ github.event.repository.name }}
+      version: ${{ needs.build_docker.outputs.version }}
+    secrets: inherit

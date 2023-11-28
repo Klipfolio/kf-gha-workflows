@@ -23,24 +23,13 @@ on:
         required: false
         default: 'mvn -DupdateReleaseInfo=true jar:jar deploy:deploy'
         type: string
-    secrets:
-      SLACK_WEBHOOK_NOTIFYCATCHER_URL:
-        required: true
-      SLACK_WEBHOOK_CICD_STATUS_URL:
-        required: true
-      BUILD_USER_EMAIL:
-        required: true
-      PA_GITHUB_REPO_ACCESS:
-        required: true
-      NEXUS_WRITE_USERNAME:
-        required: true
-      NEXUS_WRITE_PASSWORD:
-        required: true
-      NEXUS_REPO_URL:
-        required: true
-      COMMIT_KEY:
-        required: false
-      
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+env:
+  SKIP_RELEASE: ${{ contains(github.event.head_commit.message, 'release skip') || contains(github.event.head_commit.message, 'skip release') }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -54,13 +43,6 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Checkout actions repo
-        uses: actions/checkout@v4
-        with:
-          repository: Klipfolio/kf-github-actions
-          path: kf-github-actions
-          token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
-
       - name: Switch HEAD
         env:
           GIT_HEAD: ${{ github.event.pull_request.head.sha }}
@@ -71,7 +53,7 @@ jobs:
           echo $(git rev-parse --short=9 HEAD)
 
       - name: Prepare Release
-        if: github.ref == 'refs/heads/master' && !contains(github.event.head_commit.message, 'release skip')
+        if: ${{ github.ref == 'refs/heads/master' && env.SKIP_RELEASE != true }}
         run: |
           git config user.name "GitHub Actions build"
           git config user.email ${{ secrets.BUILD_USER_EMAIL }}
@@ -86,7 +68,7 @@ jobs:
           cache: 'maven'
 
       - name: Set groupId for branch
-        if: github.ref != 'refs/heads/master'
+        if: ${{ github.ref != 'refs/heads/master' }}
         env:
           GIT_BRANCH_REF: ${{ github.event.pull_request.head.ref }}
         run: |
@@ -99,13 +81,13 @@ jobs:
       - name: Set version
         run: |
           VERSION=$(cat manifest.json | jq -r .version)
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          VERSION_WITH_SHA=$VERSION-$(git rev-parse --short=9 HEAD)
+          if [[ $GITHUB_REF != "refs/heads/master" ]]; then
+            VERSION=$VERSION_WITH_SHA
+          fi
 
-      - name: Set version for branch
-        if: github.ref != 'refs/heads/master'
-        run: |
-          VERSION=$VERSION-$(git rev-parse --short=9 HEAD)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION_WITH_SHA=$VERSION_WITH_SHA" >> $GITHUB_ENV
 
       - name: Prepare Maven settings
         env:
@@ -113,7 +95,7 @@ jobs:
           NEXUS_PASSWORD: ${{ secrets.NEXUS_WRITE_PASSWORD }}
           NEXUS_REPO_URL: ${{ secrets.NEXUS_REPO_URL }}
         run: |
-          curl --silent https://kfdev-public-hh0tznlukeop.s3.ca-central-1.amazonaws.com/mvn_config_template.sh \
+          curl --silent ${{ vars.MAVEN_CONFIG_TEMPLATE_URL }} \
           --output ./maven_config_template.sh && \
           chmod u+x ./maven_config_template.sh && \
           ./maven_config_template.sh > ~/.m2/settings.xml
@@ -146,7 +128,7 @@ jobs:
           ${{ inputs.maven_deploy_cmd }}
 
       - name: Release
-        if: github.ref == 'refs/heads/master' && !contains(github.event.head_commit.message, 'release skip')
+        if: ${{ github.ref == 'refs/heads/master' && env.SKIP_RELEASE != true }}
         env:
           COMMIT_KEY: ${{ secrets.COMMIT_KEY }}
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
@@ -162,10 +144,17 @@ jobs:
           # Push release commit
           git push --follow-tags origin master
 
+      - name: Checkout actions repo
+        if: ${{ failure() && github.ref == 'refs/heads/master' }}
+        uses: actions/checkout@v4
+        with:
+          repository: Klipfolio/kf-github-actions
+          path: kf-github-actions
+          token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
+
       - name: Slack Notify
-        if: always()
+        if: ${{ failure() && github.ref == 'refs/heads/master' }}
         uses: ./kf-github-actions/.github/actions/slack-notify
-        with: 
+        with:
           job_name: Build and Test
-          always_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_NOTIFYCATCHER_URL }}
-          failure_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_CICD_STATUS_URL }}
+          always_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_CICD_STATUS_URL }}
