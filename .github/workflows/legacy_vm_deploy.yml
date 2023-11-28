@@ -17,24 +17,7 @@ on:
         description: "Maven deploy command."
         required: false
         default: 'mvn -B -U -DupdateReleaseInfo=true clean deploy'
-        type: string
-    secrets:
-      SLACK_WEBHOOK_NOTIFYCATCHER_URL:
-        required: true
-      SLACK_WEBHOOK_CICD_STATUS_URL:
-        required: true
-      PA_GITHUB_REPO_ACCESS:
-        required: true
-      NEXUS_WRITE_USERNAME:
-        required: true
-      NEXUS_WRITE_PASSWORD:
-        required: true
-      NEXUS_REPO_URL:
-        required: true
-      AWS_VM_DEPLOY_ACCESS_KEY_ID:
-        required: true
-      AWS_VM_DEPLOY_ACCESS_KEY:
-       required: true       
+        type: string 
       
 jobs:
   build:
@@ -44,13 +27,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Checkout actions repo
-        uses: actions/checkout@v4
-        with:
-          repository: Klipfolio/kf-github-actions
-          path: kf-github-actions
-          token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
 
       - name: Set up JDK
         uses: actions/setup-java@v3
@@ -100,8 +76,16 @@ jobs:
       - name: Deploy
         run: ${{ inputs.maven_deploy_cmd }}
 
+      - name: Checkout actions repo
+        if: ${{ failure() && github.ref == 'refs/heads/master' }}
+        uses: actions/checkout@v4
+        with:
+          repository: Klipfolio/kf-github-actions
+          path: kf-github-actions
+          token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
+
       - name: Slack Notify
-        if: always()
+        if: ${{ failure() && github.ref == 'refs/heads/master' }}
         uses: ./kf-github-actions/.github/actions/slack-notify
         with: 
           job_name: Build and Deploy
