@@ -18,11 +18,7 @@ on:
         type: string
         required: false
         default: 'container'
-    secrets:
-      PA_GITHUB_REPO_ACCESS:
-        required: true
-      SLACK_WEBHOOK_CICD_STATUS_URL:
-        required: true
+        
 jobs:
   clean-ghcr:
     runs-on: ubuntu-latest
@@ -39,7 +35,7 @@ jobs:
           ignore-versions: ${{ inputs.ignore_versions }}
 
       - name: Checkout actions repo
-        if: failure()
+        if: ${{ failure() && github.ref == 'refs/heads/master' }}
         uses: actions/checkout@v4
         with:
           repository: Klipfolio/kf-github-actions
@@ -47,7 +43,7 @@ jobs:
           token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
 
       - name: Slack Notify
-        if: failure()
+        if: ${{ failure() && github.ref == 'refs/heads/master' }}
         uses: ./kf-github-actions/.github/actions/slack-notify
         with: 
           job_name: Delete old images

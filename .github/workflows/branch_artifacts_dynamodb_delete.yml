@@ -10,13 +10,6 @@ on:
         description: 'The Branch name of the component to delete'
         required: true
         type: string
-    secrets:
-      BUILD_ARTIFACTS_DYNAMODB_AWS_ACCESS_KEY_ID:
-        required: true
-      BUILD_ARTIFACTS_DYNAMODB_AWS_ACCESS_KEY:
-       required: true
-      PA_GITHUB_REPO_ACCESS:
-        required: true
 
 jobs:
   delete_version:
@@ -40,7 +33,7 @@ jobs:
               --key '{"component":{"S":"${{ inputs.component }}"},"branch":{"S":"${{ inputs.branch }}"}}'
 
       - name: Checkout actions repo
-        if: always()
+        if: failure()
         uses: actions/checkout@v4
         with:
           repository: Klipfolio/kf-github-actions
@@ -48,9 +41,8 @@ jobs:
           token: ${{ secrets.PA_GITHUB_REPO_ACCESS }}
 
       - name: Slack Notify
-        if: always()
+        if: failure()
         uses: ./kf-github-actions/.github/actions/slack-notify
         with:
           job_name: delete_version
-          always_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_NOTIFYCATCHER_URL }}
-          failure_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_CICD_STATUS_URL }}
+          always_notify_channel_webhook_url: ${{ secrets.SLACK_WEBHOOK_CICD_STATUS_URL }}
