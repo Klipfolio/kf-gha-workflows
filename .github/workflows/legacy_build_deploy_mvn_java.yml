@@ -117,7 +117,7 @@ jobs:
 
       - name: Upload unit test report
         if: steps.unit-tests.outcome == 'failure'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: unit-test-report.html
           path: target/site/surefire-report.html
