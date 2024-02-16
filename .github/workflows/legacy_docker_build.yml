@@ -68,6 +68,7 @@ jobs:
 
             DOCKER_TAGS="$DOCKER_TAGS,${ECR_REGISTRY_TAG_PREFIX}${VERSION_WITH_SHA}"
             DOCKER_TAGS="$DOCKER_TAGS,${ECR_REGISTRY_TAG_PREFIX}master-${VERSION}"
+            DOCKER_TAGS="$DOCKER_TAGS,${ECR_REGISTRY_TAG_PREFIX}latest"
           fi
           echo "docker_tags=${DOCKER_TAGS}"
           echo "docker_tags=${DOCKER_TAGS}" >> $GITHUB_OUTPUT
